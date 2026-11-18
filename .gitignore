@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.parquet
+occurrence.parquet/
+rec/
+variants/
+results_v05/
+figures_v05/

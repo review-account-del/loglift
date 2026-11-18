@@ -1,0 +1,30 @@
+import numpy as np, polars as pl, time
+import loglift_bench as old, loglift_core as lc
+cells = pl.read_parquet("cells.parquet").to_pandas().set_index("LocalityID")
+fc = pl.read_parquet("focal_cells.parquet").to_pandas()
+E = cells.effort_index.to_numpy()
+T = np.arange(1, 5)
+sp = "Primula farinosa"
+isF = cells.index.isin(fc.loc[fc.species == sp, "LocalityID"])
+V = (cells.red_disk - cells["self_Primula_farinosa"]).to_numpy(float)
+so100 = old.rank_quantile_strata(E, 100)
+t=time.time(); a = old.loglift(V[isF], so100[isF], V[~isF], so100[~isF], T); print("old ll100", a.round(5), round(time.time()-t,2))
+cls = lc.classes(V, T); C = len(T)+1
+Kc = so100.max()+1
+F = np.bincount(so100[isF]*C + cls[isF], minlength=Kc*C).reshape(Kc, C)
+B = np.bincount(so100[~isF]*C + cls[~isF], minlength=Kc*C).reshape(Kc, C)
+print("tab ll100(old strata)", lc.loglift_tab(F, B).round(5))
+print("old raw", old.raw_lift(V[isF], V[~isF], T).round(5), " tab raw", lc.raw_tab(F.sum(0), B.sum(0)).round(5))
+oc = old.est_cooccurrence(isF, V, T); nc = lc.cooc_tab(F.sum(0), B.sum(0))
+for k in ("pmi","npmi","fisher_log2OR","jaccard","fisher_p"): print(k, np.round(oc[k],5), np.round(nc[k],5))
+# GLM linear old vs table (full background)
+t=time.time(); g_old = old.est_glm(V[isF], so100[isF], E[isF], V[~isF], so100[~isF], E[~isF], T, "linear"); print("old glm_lin", g_old.round(5), round(time.time()-t,1),"s")
+U = lc.Universe(E, Ks=(10,100))
+print("Keff", U.Keff, "levels", U.L, "xbins", len(U.xval), "knots", np.round(np.expm1(U.knots),2))
+idxF = np.flatnonzero(isF); idxB = np.flatnonzero(~isF)
+tg = np.zeros(len(E), np.int64)
+JF = U.joint(idxF, cls, C, tg); JB = U.joint(idxB, cls, C, tg)
+t=time.time(); r, D = lc.estimates_from_joint(U, JF, JB, diag=True); print("new all", round(time.time()-t,2),"s")
+for k,v in r.items(): print(k, np.round(v,4))
+g_f_old = old.est_glm(V[isF], so100[isF], E[isF], V[~isF], so100[~isF], E[~isF], T, "factor"); print("old glm_factor (old strata)", g_f_old.round(4))
+for k in D: print(k, [(d['converged'], d['iterations'], round(d['b_focal'],3), round(d['se_focal'],3)) for d in D[k]])
